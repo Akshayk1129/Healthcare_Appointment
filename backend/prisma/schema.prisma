@@ -1,0 +1,190 @@
+// Healthcare Appointment & Follow-up Manager
+// Prisma Schema — defines all tables, enums, and constraints
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum AppointmentStatus {
+  AVAILABLE
+  PENDING_HOLD
+  BOOKED
+  CANCELLED
+  COMPLETED
+}
+
+enum NotificationType {
+  EMAIL_BOOKING_CONFIRM
+  EMAIL_REMINDER
+  EMAIL_CANCELLATION
+  MEDICATION_REMINDER
+  LEAVE_CONFLICT
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ─── Users ──────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  doctorProfile    DoctorProfile?
+  patientAppointments Appointment[]     @relation("PatientAppointments")
+  notifications    NotificationJob[] @relation("RecipientNotifications")
+
+  @@map("users")
+}
+
+// ─── Doctor Profiles ────────────────────────────────────────────────────────
+
+model DoctorProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique @map("user_id")
+  specialisation      String
+  workingHours        Json     @map("working_hours")
+  // JSON format: { "mon": { "start": "09:00", "end": "17:00" }, ... }
+  slotDurationMinutes Int      @default(30) @map("slot_duration_minutes")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveDays  DoctorLeaveDay[]
+  appointments Appointment[]
+
+  @@map("doctor_profiles")
+}
+
+// ─── Doctor Leave Days ──────────────────────────────────────────────────────
+
+model DoctorLeaveDay {
+  id        String   @id @default(uuid())
+  doctorId  String   @map("doctor_id")
+  leaveDate DateTime @map("leave_date") @db.Date
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  doctor DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  // A doctor can only have one leave entry per date
+  @@unique([doctorId, leaveDate])
+  @@map("doctor_leave_days")
+}
+
+// ─── Appointments ───────────────────────────────────────────────────────────
+// The UNIQUE constraint on (doctorId, slotStartTime) is the DB-level
+// double-booking guard. Even if two requests race, only one INSERT succeeds.
+//
+// Optimistic locking: `version` is incremented on every update. To update,
+// you must provide the current version in your WHERE clause — if it doesn't
+// match, another transaction modified the row first, and your update fails.
+//
+// Slot-hold flow: a booking attempt sets status = PENDING_HOLD with
+// holdExpiresAt (e.g. now + 5 min) and a holdOwnerToken (UUID). A background
+// cron job expires stale holds by resetting them to AVAILABLE.
+
+model Appointment {
+  id             String            @id @default(uuid())
+  doctorId       String            @map("doctor_id")
+  patientId      String?           @map("patient_id")
+  slotStartTime  DateTime          @map("slot_start_time")
+  slotEndTime    DateTime          @map("slot_end_time")
+  status         AppointmentStatus @default(AVAILABLE)
+  version        Int               @default(1)
+  holdExpiresAt  DateTime?         @map("hold_expires_at")
+  holdOwnerToken String?           @map("hold_owner_token")
+  notes          String?
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  doctor             DoctorProfile      @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient            User?              @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: SetNull)
+  symptomSummary     SymptomSummary?
+  postVisitSummary   PostVisitSummary?
+
+  // DB-level double-booking prevention
+  @@unique([doctorId, slotStartTime])
+  @@map("appointments")
+}
+
+// ─── Symptom Summaries (stub for Day 3 LLM integration) ─────────────────────
+
+model SymptomSummary {
+  id            String   @id @default(uuid())
+  appointmentId String   @unique @map("appointment_id")
+  summary       String   @db.Text
+  rawInput      String?  @map("raw_input") @db.Text
+  generatedAt   DateTime @default(now()) @map("generated_at")
+
+  // Relations
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@map("symptom_summaries")
+}
+
+// ─── Post-Visit Summaries (stub for Day 3 LLM integration) ──────────────────
+
+model PostVisitSummary {
+  id            String   @id @default(uuid())
+  appointmentId String   @unique @map("appointment_id")
+  summary       String   @db.Text
+  prescription  String?  @db.Text
+  followUpNotes String?  @map("follow_up_notes") @db.Text
+  generatedAt   DateTime @default(now()) @map("generated_at")
+
+  // Relations
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@map("post_visit_summaries")
+}
+
+// ─── Notification Jobs ──────────────────────────────────────────────────────
+// Supports retry logic: attempts tracks how many times delivery was tried,
+// lastError stores the most recent failure reason. A background worker picks
+// up PENDING jobs and processes them.
+
+model NotificationJob {
+  id          String             @id @default(uuid())
+  type        NotificationType
+  recipientId String             @map("recipient_id")
+  payload     Json
+  status      NotificationStatus @default(PENDING)
+  attempts    Int                @default(0)
+  lastError   String?            @map("last_error")
+  scheduledAt DateTime?          @map("scheduled_at")
+  sentAt      DateTime?          @map("sent_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  recipient User @relation("RecipientNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@map("notification_jobs")
+}
