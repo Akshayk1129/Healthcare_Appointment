@@ -1,0 +1,42 @@
+============================================================
+CONCURRENCY TEST — Slot Hold Race Condition
+============================================================
+Target: https://healthcare-api-4y2l.onrender.com
+
+[1] Logging in as admin...
+    Admin login OK
+[2] Creating test doctor...
+    Doctor created: ff1f9cae-0155-4dd8-93f0-1b45d6a052cb
+[3] Generating slots...
+    Generated 88 new slots (88 total attempted, duplicates skipped)
+[4] Finding an available slot...
+    Target slot: adda3dcb-ca86-4b9c-90aa-0c20df587ce2 (2026-08-20T09:00:00.000Z)
+[5] Registering 10 test patients...
+    Registered 10 patients
+[6] Firing 10 simultaneous hold requests...
+    Target slot: adda3dcb-ca86-4b9c-90aa-0c20df587ce2
+
+------------------------------------------------------------
+RESULTS:
+------------------------------------------------------------
+  Patient 0: ✅ [200] HOLD ACQUIRED
+  Patient 1: ❌ [409] Slot is no longer available
+  Patient 2: ❌ [409] Slot is no longer available
+  Patient 3: ❌ [409] Slot is no longer available
+  Patient 4: ❌ [409] Slot is no longer available
+  Patient 5: ❌ [409] Slot is no longer available
+  Patient 6: ❌ [409] Slot is no longer available
+  Patient 7: ❌ [409] Slot is no longer available
+  Patient 8: ❌ [409] Slot is no longer available
+  Patient 9: ❌ [409] Slot is no longer available
+
+------------------------------------------------------------
+SUMMARY: 1 succeeded, 9 failed
+------------------------------------------------------------
+✅ PASS — Exactly 1 hold succeeded, 9 were correctly rejected.
+   Double-booking is prevented at the database level.
+============================================================
+
+Test run on: 2026-08-20
+Backend: https://healthcare-api-4y2l.onrender.com
+Database: Render PostgreSQL (free tier)
