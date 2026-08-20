@@ -56,6 +56,7 @@ model User {
   doctorProfile    DoctorProfile?
   patientAppointments Appointment[]     @relation("PatientAppointments")
   notifications    NotificationJob[] @relation("RecipientNotifications")
+  calendarToken    GoogleCalendarToken?
 
   @@map("users")
 }
@@ -120,6 +121,8 @@ model Appointment {
   holdExpiresAt  DateTime?         @map("hold_expires_at")
   holdOwnerToken String?           @map("hold_owner_token")
   notes          String?
+  googleCalendarEventId  String?  @map("google_calendar_event_id")
+  patientCalendarEventId String?  @map("patient_calendar_event_id")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
@@ -141,6 +144,7 @@ model SymptomSummary {
   appointmentId String   @unique @map("appointment_id")
   summary       String   @db.Text
   rawInput      String?  @map("raw_input") @db.Text
+  llmFailed     Boolean  @default(false) @map("llm_failed")
   generatedAt   DateTime @default(now()) @map("generated_at")
 
   // Relations
@@ -157,6 +161,7 @@ model PostVisitSummary {
   summary       String   @db.Text
   prescription  String?  @db.Text
   followUpNotes String?  @map("follow_up_notes") @db.Text
+  llmFailed     Boolean  @default(false) @map("llm_failed")
   generatedAt   DateTime @default(now()) @map("generated_at")
 
   // Relations
@@ -187,4 +192,21 @@ model NotificationJob {
   recipient User @relation("RecipientNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@map("notification_jobs")
+}
+
+// ─── Google Calendar Tokens ─────────────────────────────────────────────────
+
+model GoogleCalendarToken {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  accessToken  String   @map("access_token") @db.Text
+  refreshToken String   @map("refresh_token") @db.Text
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_calendar_tokens")
 }

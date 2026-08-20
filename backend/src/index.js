@@ -7,7 +7,10 @@ const authRoutes = require("./routes/auth");
 const adminRoutes = require("./routes/admin");
 const doctorRoutes = require("./routes/doctors");
 const appointmentRoutes = require("./routes/appointments");
+const calendarRoutes = require("./routes/calendar");
 const { startHoldExpirySweep } = require("./jobs/holdExpiry");
+const { startNotificationWorker } = require("./jobs/notificationWorker");
+const { startReminderScheduler } = require("./jobs/reminderScheduler");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +36,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/appointments", appointmentRoutes);
+app.use("/api/calendar", calendarRoutes);
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────
 
@@ -55,4 +59,6 @@ app.listen(PORT, () => {
 
   // Start background jobs
   startHoldExpirySweep();
+  startNotificationWorker();
+  startReminderScheduler();
 });

@@ -4,10 +4,14 @@ import Register from './pages/Register.jsx'
 import DoctorSearch from './pages/DoctorSearch.jsx'
 import SlotList from './pages/SlotList.jsx'
 import MyAppointments from './pages/MyAppointments.jsx'
+import DoctorDashboard from './pages/DoctorDashboard.jsx'
 
 function App() {
   const [user, setUser] = useState(null)
   const [route, setRoute] = useState(window.location.hash || '#/')
+  const [calendarConnected, setCalendarConnected] = useState(false)
+
+  const apiUrl = import.meta.env.VITE_API_URL || ''
 
   // Listen for hash changes
   useEffect(() => {
@@ -24,16 +28,51 @@ function App() {
     }
   }, [])
 
+  // Check calendar connection status
+  useEffect(() => {
+    if (user) {
+      const token = localStorage.getItem('token')
+      fetch(`${apiUrl}/api/calendar/status`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(d => setCalendarConnected(d.connected))
+        .catch(() => {})
+    }
+  }, [user])
+
   const handleLogin = (userData) => {
     setUser(userData)
-    window.location.hash = '#/doctors'
+    if (userData.role === 'DOCTOR') {
+      window.location.hash = '#/doctor-dashboard'
+    } else {
+      window.location.hash = '#/doctors'
+    }
   }
 
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setUser(null)
+    setCalendarConnected(false)
     window.location.hash = '#/login'
+  }
+
+  const connectCalendar = async () => {
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch(`${apiUrl}/api/calendar/auth`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (data.authUrl) {
+        window.location.href = data.authUrl
+      } else {
+        alert('Calendar integration not configured yet.')
+      }
+    } catch {
+      alert('Error connecting to Google Calendar')
+    }
   }
 
   // Extract route params
@@ -56,6 +95,9 @@ function App() {
     if (route === '#/my-appointments') {
       return <MyAppointments />
     }
+    if (route === '#/doctor-dashboard') {
+      return <DoctorDashboard />
+    }
     return <DoctorSearch />
   }
 
@@ -69,12 +111,31 @@ function App() {
         <div className="nav-links">
           {user ? (
             <>
-              <a href="#/doctors" className={`nav-link ${route === '#/doctors' ? 'active' : ''}`}>
-                Doctors
-              </a>
-              <a href="#/my-appointments" className={`nav-link ${route === '#/my-appointments' ? 'active' : ''}`}>
-                My Appointments
-              </a>
+              {user.role === 'PATIENT' && (
+                <>
+                  <a href="#/doctors" className={`nav-link ${route === '#/doctors' ? 'active' : ''}`}>
+                    Doctors
+                  </a>
+                  <a href="#/my-appointments" className={`nav-link ${route === '#/my-appointments' ? 'active' : ''}`}>
+                    My Appointments
+                  </a>
+                </>
+              )}
+              {user.role === 'DOCTOR' && (
+                <a href="#/doctor-dashboard" className={`nav-link ${route === '#/doctor-dashboard' ? 'active' : ''}`}>
+                  Dashboard
+                </a>
+              )}
+
+              {/* Calendar connection */}
+              {calendarConnected ? (
+                <span className="calendar-status connected">📅 Calendar linked</span>
+              ) : (
+                <button className="btn btn-ghost btn-sm calendar-btn" onClick={connectCalendar}>
+                  📅 Connect Calendar
+                </button>
+              )}
+
               <span className="nav-user">
                 {user.name} <span className="badge badge-sm">{user.role}</span>
               </span>

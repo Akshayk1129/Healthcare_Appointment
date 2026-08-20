@@ -6,6 +6,9 @@ export default function SlotList({ doctorId }) {
   const [holdingId, setHoldingId] = useState(null)
   const [holdResult, setHoldResult] = useState(null)
   const [confirmingId, setConfirmingId] = useState(null)
+  const [symptoms, setSymptoms] = useState('')
+  const [symptomResult, setSymptomResult] = useState(null)
+  const [submittingSymptoms, setSubmittingSymptoms] = useState(false)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -34,6 +37,8 @@ export default function SlotList({ doctorId }) {
     }
     setHoldingId(slotId)
     setHoldResult(null)
+    setSymptomResult(null)
+    setSymptoms('')
     try {
       const res = await fetch(`${apiUrl}/api/appointments/${slotId}/hold`, {
         method: 'POST',
@@ -51,7 +56,6 @@ export default function SlotList({ doctorId }) {
           holdOwnerToken: data.appointment.holdOwnerToken,
           holdExpiresAt: data.appointment.holdExpiresAt,
         })
-        // Remove the slot from the available list
         setSlots((prev) => prev.filter((s) => s.id !== slotId))
       } else {
         setHoldResult({ success: false, error: data.error })
@@ -60,6 +64,32 @@ export default function SlotList({ doctorId }) {
       setHoldResult({ success: false, error: 'Network error' })
     } finally {
       setHoldingId(null)
+    }
+  }
+
+  const submitSymptoms = async () => {
+    if (!symptoms.trim() || !holdResult?.slotId) return
+    setSubmittingSymptoms(true)
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/appointments/${holdResult.slotId}/symptoms`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ symptoms }),
+        }
+      )
+      const data = await res.json()
+      if (res.ok) {
+        setSymptomResult(data.analysis)
+      }
+    } catch {
+      // Symptom submission is optional — don't block
+    } finally {
+      setSubmittingSymptoms(false)
     }
   }
 
@@ -82,6 +112,8 @@ export default function SlotList({ doctorId }) {
 
       if (res.ok) {
         setHoldResult(null)
+        setSymptomResult(null)
+        setSymptoms('')
         alert('Appointment confirmed! ✅')
         window.location.hash = '#/my-appointments'
       } else {
@@ -105,34 +137,92 @@ export default function SlotList({ doctorId }) {
     })
   }
 
+  const urgencyColors = {
+    High: '#f87171',
+    Medium: '#fbbf24',
+    Low: '#34d399',
+  }
+
   return (
     <div className="page">
       <a href="#/doctors" className="link back-link">← Back to Doctors</a>
       <h1>Available Slots</h1>
 
-      {/* Hold confirmation banner */}
+      {/* Hold + Symptoms + Confirm flow */}
       {holdResult?.success && (
         <div className="hold-banner">
-          <p>
-            🔒 Slot held! Expires at{' '}
-            <strong>{new Date(holdResult.holdExpiresAt).toLocaleTimeString()}</strong>
-          </p>
-          <button
-            className="btn btn-primary"
-            onClick={confirmSlot}
-            disabled={confirmingId}
-          >
-            {confirmingId ? 'Confirming...' : 'Confirm Appointment'}
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              setHoldResult(null)
-              fetchSlots()
-            }}
-          >
-            Cancel
-          </button>
+          <div className="hold-banner-header">
+            <p>
+              🔒 Slot held! Expires at{' '}
+              <strong>{new Date(holdResult.holdExpiresAt).toLocaleTimeString()}</strong>
+            </p>
+          </div>
+
+          {/* Symptoms form */}
+          <div className="symptoms-section">
+            <h3>📋 Describe your symptoms (optional but recommended)</h3>
+            <textarea
+              value={symptoms}
+              onChange={(e) => setSymptoms(e.target.value)}
+              placeholder="E.g., persistent headache for 3 days, mild fever, neck stiffness..."
+              rows={3}
+              className="symptoms-input"
+            />
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={submitSymptoms}
+              disabled={submittingSymptoms || !symptoms.trim()}
+            >
+              {submittingSymptoms ? 'Analysing...' : 'Analyse Symptoms with AI'}
+            </button>
+
+            {/* AI Analysis Result */}
+            {symptomResult && (
+              <div className="symptom-result">
+                {symptomResult.llmFailed ? (
+                  <p className="symptom-fallback">⚠️ AI analysis unavailable — symptoms saved as-is</p>
+                ) : (
+                  <>
+                    <div className="urgency-badge" style={{ color: urgencyColors[symptomResult.urgency] }}>
+                      Urgency: {symptomResult.urgency}
+                    </div>
+                    <p><strong>Chief complaint:</strong> {symptomResult.chiefComplaint}</p>
+                    {symptomResult.suggestedQuestions?.length > 0 && (
+                      <div>
+                        <strong>Suggested questions for your doctor:</strong>
+                        <ul>
+                          {symptomResult.suggestedQuestions.map((q, i) => (
+                            <li key={i}>{q}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="hold-actions">
+            <button
+              className="btn btn-primary"
+              onClick={confirmSlot}
+              disabled={confirmingId}
+            >
+              {confirmingId ? 'Confirming...' : 'Confirm Appointment'}
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setHoldResult(null)
+                setSymptomResult(null)
+                setSymptoms('')
+                fetchSlots()
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

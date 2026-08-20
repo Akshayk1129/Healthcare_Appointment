@@ -4,6 +4,7 @@ export default function MyAppointments() {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
   const [cancellingId, setCancellingId] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -69,6 +70,12 @@ export default function MyAppointments() {
     COMPLETED: 'status-completed',
   }
 
+  const urgencyColors = {
+    High: '#f87171',
+    Medium: '#fbbf24',
+    Low: '#34d399',
+  }
+
   return (
     <div className="page">
       <h1>My Appointments</h1>
@@ -83,16 +90,41 @@ export default function MyAppointments() {
       ) : (
         <div className="appointments-list">
           {appointments.map((apt) => (
-            <div key={apt.id} className="appointment-card">
+            <div key={apt.id} className="appointment-card doctor-apt-card">
               <div className="appointment-info">
-                <h3>{apt.doctorName}</h3>
-                <span className="badge">{apt.specialisation}</span>
+                <div className="apt-header-row">
+                  <h3>{apt.doctorName}</h3>
+                  <span className="badge">{apt.specialisation}</span>
+                  <span className={`status-badge ${statusColors[apt.status]}`}>
+                    {apt.status}
+                  </span>
+                </div>
                 <p className="appointment-time">{formatTime(apt.slotStartTime)}</p>
+
+                {/* Symptom Analysis */}
+                {apt.symptomAnalysis && (
+                  <div className="symptom-preview">
+                    {apt.symptomAnalysis.urgency && (
+                      <span style={{ color: urgencyColors[apt.symptomAnalysis.urgency], fontWeight: 700 }}>
+                        {apt.symptomAnalysis.urgency} urgency
+                      </span>
+                    )}
+                    {' · '}
+                    <strong>Chief complaint:</strong> {apt.symptomAnalysis.chiefComplaint}
+                  </div>
+                )}
               </div>
+
               <div className="appointment-actions">
-                <span className={`status-badge ${statusColors[apt.status]}`}>
-                  {apt.status}
-                </span>
+                {/* Show details toggle for completed */}
+                {apt.status === 'COMPLETED' && apt.postVisitSummary && (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setExpandedId(expandedId === apt.id ? null : apt.id)}
+                  >
+                    {expandedId === apt.id ? 'Hide Details' : 'View Summary'}
+                  </button>
+                )}
                 {apt.status === 'BOOKED' && (
                   <button
                     className="btn btn-danger btn-sm"
@@ -103,6 +135,38 @@ export default function MyAppointments() {
                   </button>
                 )}
               </div>
+
+              {/* Expanded post-visit summary */}
+              {expandedId === apt.id && apt.postVisitSummary && (
+                <div className="post-visit-result">
+                  <h4>Doctor's Summary</h4>
+                  <p>{apt.postVisitSummary.patientSummary}</p>
+
+                  {apt.postVisitSummary.medications?.length > 0 && (
+                    <div>
+                      <h5>💊 Medications:</h5>
+                      <ul>
+                        {apt.postVisitSummary.medications.map((m, i) => (
+                          <li key={i}>
+                            <strong>{m.drug}</strong> — {m.dosage}, {m.frequency} for {m.durationDays} days
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {apt.postVisitSummary.followUpSteps?.length > 0 && (
+                    <div>
+                      <h5>📋 Follow-up Steps:</h5>
+                      <ul>
+                        {apt.postVisitSummary.followUpSteps.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
