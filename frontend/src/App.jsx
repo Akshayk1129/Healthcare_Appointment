@@ -5,6 +5,7 @@ import DoctorSearch from './pages/DoctorSearch.jsx'
 import SlotList from './pages/SlotList.jsx'
 import MyAppointments from './pages/MyAppointments.jsx'
 import DoctorDashboard from './pages/DoctorDashboard.jsx'
+import AdminDashboard from './pages/AdminDashboard.jsx'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -45,6 +46,8 @@ function App() {
     setUser(userData)
     if (userData.role === 'DOCTOR') {
       window.location.hash = '#/doctor-dashboard'
+    } else if (userData.role === 'ADMIN') {
+      window.location.hash = '#/admin-dashboard'
     } else {
       window.location.hash = '#/doctors'
     }
@@ -98,6 +101,9 @@ function App() {
     if (route === '#/doctor-dashboard') {
       return <DoctorDashboard />
     }
+    if (route === '#/admin-dashboard' && user?.role === 'ADMIN') {
+      return <AdminDashboard />
+    }
     return <DoctorSearch />
   }
 
@@ -126,9 +132,14 @@ function App() {
                   Dashboard
                 </a>
               )}
+              {user.role === 'ADMIN' && (
+                <a href="#/admin-dashboard" className={`nav-link ${route === '#/admin-dashboard' ? 'active' : ''}`}>
+                  Admin Panel
+                </a>
+              )}
 
               {/* Calendar connection */}
-              {calendarConnected ? (
+              {user.role !== 'ADMIN' && (calendarConnected ? (
                 <span className="calendar-status connected">📅 Calendar linked</span>
               ) : (
                 <button className="btn btn-ghost btn-sm calendar-btn" onClick={connectCalendar}>
