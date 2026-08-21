@@ -139,12 +139,14 @@ function App() {
               )}
 
               {/* Calendar connection */}
-              {user.role !== 'ADMIN' && (calendarConnected ? (
-                <span className="calendar-status connected">📅 Calendar linked</span>
-              ) : (
-                <button className="btn btn-ghost btn-sm calendar-btn" onClick={connectCalendar}>
-                  📅 Connect Calendar
-                </button>
+              {user.role !== 'ADMIN' && (
+                calendarConnected ? (
+                  <span className="calendar-status connected">📅 Calendar linked</span>
+                ) : (
+                  <button className="btn btn-ghost btn-sm calendar-btn" onClick={connectCalendar}>
+                    📅 Connect Calendar
+                  </button>
+                )
               )}
 
               <span className="nav-user">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { apiUrl } from '../config';
 
 function AdminDashboard() {
+  const apiUrl = import.meta.env.VITE_API_URL || '';
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
