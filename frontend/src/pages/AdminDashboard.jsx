@@ -143,13 +143,14 @@ function AdminDashboard() {
         {/* Create Doctor Form */}
         <div className="card">
           <h3>Create New Doctor</h3>
-          <form onSubmit={handleCreateDoctor} className="form-group">
+          <form onSubmit={handleCreateDoctor} className="form-group" autoComplete="off">
             <input 
               type="text" 
               placeholder="Full Name" 
               value={newDoctor.name} 
               onChange={e => setNewDoctor({...newDoctor, name: e.target.value})}
               required 
+              autoComplete="off"
             />
             <input 
               type="email" 
@@ -157,6 +158,7 @@ function AdminDashboard() {
               value={newDoctor.email} 
               onChange={e => setNewDoctor({...newDoctor, email: e.target.value})}
               required 
+              autoComplete="off"
             />
             <input 
               type="password" 
@@ -164,6 +166,8 @@ function AdminDashboard() {
               value={newDoctor.password} 
               onChange={e => setNewDoctor({...newDoctor, password: e.target.value})}
               required 
+              minLength={6}
+              autoComplete="new-password"
             />
             <input 
               type="text" 
@@ -171,6 +175,7 @@ function AdminDashboard() {
               value={newDoctor.specialisation} 
               onChange={e => setNewDoctor({...newDoctor, specialisation: e.target.value})}
               required 
+              autoComplete="off"
             />
             <button type="submit" className="btn-primary">Create Doctor</button>
           </form>
