@@ -36,6 +36,8 @@ enum NotificationType {
 
 enum NotificationStatus {
   PENDING
+  PROCESSING
+  RETRYING
   SENT
   FAILED
 }

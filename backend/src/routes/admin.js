@@ -22,6 +22,15 @@ router.post("/doctors", async (req, res) => {
         error: "email, password, name, specialisation, and workingHours are required",
       });
     }
+    if (typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+    if (typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ error: "Password must be a string of at least 6 characters" });
+    }
+    if (typeof workingHours !== "object") {
+      return res.status(400).json({ error: "workingHours must be a JSON object" });
+    }
 
     // Check if user already exists
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -203,8 +212,8 @@ router.post("/doctors/:id/leave", async (req, res) => {
     const { id } = req.params;
     const { date, reason } = req.body;
 
-    if (!date) {
-      return res.status(400).json({ error: "date is required (YYYY-MM-DD)" });
+    if (!date || typeof date !== "string" || !date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return res.status(400).json({ error: "date is required in YYYY-MM-DD format" });
     }
 
     const profile = await prisma.doctorProfile.findUnique({

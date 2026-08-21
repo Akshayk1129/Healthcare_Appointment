@@ -18,35 +18,42 @@ const MAX_ATTEMPTS = 3;
 
 async function processNotificationJobs() {
   try {
-    // Find pending jobs that are due
+    // Atomically claim up to 10 jobs that are due and respect exponential backoff
+    const lockedRows = await prisma.$queryRawUnsafe(`
+      UPDATE notification_jobs
+      SET status = 'PROCESSING', updated_at = NOW()
+      WHERE id IN (
+        SELECT id FROM notification_jobs
+        WHERE status IN ('PENDING', 'RETRYING')
+          AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+          AND (
+            status = 'PENDING' OR 
+            NOW() >= updated_at + (POWER(2, attempts) * INTERVAL '1 minute')
+          )
+        ORDER BY created_at ASC
+        LIMIT 10
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id
+    `);
+
+    if (!lockedRows || lockedRows.length === 0) return;
+
+    const jobIds = lockedRows.map((r) => r.id);
+
+    // Fetch full job data including recipient
     const jobs = await prisma.notificationJob.findMany({
-      where: {
-        status: "PENDING",
-        OR: [
-          { scheduledAt: null },
-          { scheduledAt: { lte: new Date() } },
-        ],
-      },
+      where: { id: { in: jobIds } },
       include: {
         recipient: { select: { email: true, name: true } },
       },
-      take: 10, // Process up to 10 jobs per cycle
       orderBy: { createdAt: "asc" },
     });
-
-    if (jobs.length === 0) return;
 
     console.log(`[NotificationWorker] Processing ${jobs.length} job(s)`);
 
     for (const job of jobs) {
       try {
-        // Check exponential backoff: skip if too recent after a failure
-        if (job.attempts > 0) {
-          const backoffMs = Math.pow(2, job.attempts) * 60 * 1000;
-          const nextRetryAt = new Date(job.updatedAt.getTime() + backoffMs);
-          if (new Date() < nextRetryAt) continue;
-        }
-
         const result = await sendEmail(
           job.type,
           job.recipient.email,
@@ -66,7 +73,7 @@ async function processNotificationJobs() {
           console.log(`[NotificationWorker] Job ${job.id} SENT (${job.type})`);
         } else {
           const newAttempts = job.attempts + 1;
-          const newStatus = newAttempts >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
+          const newStatus = newAttempts >= MAX_ATTEMPTS ? "FAILED" : "RETRYING";
 
           await prisma.notificationJob.update({
             where: { id: job.id },
@@ -87,7 +94,7 @@ async function processNotificationJobs() {
         await prisma.notificationJob.update({
           where: { id: job.id },
           data: {
-            status: newAttempts >= MAX_ATTEMPTS ? "FAILED" : "PENDING",
+            status: newAttempts >= MAX_ATTEMPTS ? "FAILED" : "RETRYING",
             attempts: newAttempts,
             lastError: err.message,
           },

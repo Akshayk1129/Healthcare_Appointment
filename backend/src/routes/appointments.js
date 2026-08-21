@@ -5,6 +5,7 @@ const { authenticate } = require("../middleware/auth");
 const { authorize } = require("../middleware/roleGuard");
 const { analyzeSymptoms, generatePostVisitSummary } = require("../services/llm");
 const calendarService = require("../services/calendar");
+const { llmRateLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
 
@@ -73,13 +74,16 @@ router.post("/:id/hold", authenticate, authorize("PATIENT"), async (req, res) =>
  * Patient submits symptoms before confirming. Calls Gemini for AI analysis.
  * On LLM failure: stores raw symptoms as fallback, never breaks the flow.
  */
-router.post("/:id/symptoms", authenticate, authorize("PATIENT"), async (req, res) => {
+router.post("/:id/symptoms", authenticate, authorize("PATIENT"), llmRateLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     const { symptoms } = req.body;
 
-    if (!symptoms || symptoms.trim().length === 0) {
+    if (!symptoms || typeof symptoms !== "string" || symptoms.trim().length === 0) {
       return res.status(400).json({ error: "symptoms text is required" });
+    }
+    if (symptoms.length > 2000) {
+      return res.status(400).json({ error: "symptoms text is too long (max 2000 chars)" });
     }
 
     // Verify the appointment exists and belongs to this patient
@@ -344,13 +348,16 @@ router.post("/:id/cancel", authenticate, async (req, res) => {
  * a patient-friendly summary with medication schedule.
  * Creates medication reminder NotificationJob rows.
  */
-router.post("/:id/post-visit", authenticate, authorize("DOCTOR"), async (req, res) => {
+router.post("/:id/post-visit", authenticate, authorize("DOCTOR"), llmRateLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     const { clinicalNotes } = req.body;
 
-    if (!clinicalNotes || clinicalNotes.trim().length === 0) {
+    if (!clinicalNotes || typeof clinicalNotes !== "string" || clinicalNotes.trim().length === 0) {
       return res.status(400).json({ error: "clinicalNotes is required" });
+    }
+    if (clinicalNotes.length > 5000) {
+      return res.status(400).json({ error: "clinicalNotes text is too long (max 5000 chars)" });
     }
 
     const appointment = await prisma.appointment.findUnique({
