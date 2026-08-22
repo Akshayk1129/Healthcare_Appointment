@@ -5,6 +5,7 @@ export default function MyAppointments() {
   const [loading, setLoading] = useState(true)
   const [cancellingId, setCancellingId] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  const [exporting, setExporting] = useState(false)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -76,9 +77,44 @@ export default function MyAppointments() {
     Low: '#34d399',
   }
 
+  const exportPDF = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch(`${apiUrl}/api/appointments/export/pdf`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        throw new Error('Failed to download PDF')
+      }
+      
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'Medical_Records.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Error downloading PDF: ' + err.message)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="page">
-      <h1>My Appointments</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h1 style={{ margin: 0 }}>My Appointments</h1>
+        <button 
+          className="btn btn-secondary" 
+          onClick={exportPDF} 
+          disabled={exporting || appointments.filter(a => a.status === 'COMPLETED').length === 0}
+        >
+          {exporting ? 'Generating PDF...' : '📄 Download Medical Records'}
+        </button>
+      </div>
 
       {loading ? (
         <p className="empty-state">Loading...</p>

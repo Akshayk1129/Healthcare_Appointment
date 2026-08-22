@@ -6,6 +6,7 @@ const { authorize } = require("../middleware/roleGuard");
 const { analyzeSymptoms, generatePostVisitSummary } = require("../services/llm");
 const calendarService = require("../services/calendar");
 const { processWaitlistForSlot } = require("../services/waitlist");
+const { generateMedicalRecordsPDF } = require("../services/pdf");
 const { llmRateLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
@@ -781,6 +782,42 @@ router.post("/waitlist", authenticate, authorize("PATIENT"), async (req, res) =>
   } catch (err) {
     console.error("Join waitlist error:", err);
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/appointments/export/pdf
+ *
+ * Streams a generated PDF containing the patient's medical history.
+ */
+router.get("/export/pdf", authenticate, authorize("PATIENT"), async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    
+    // Fetch all completed appointments with notes
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        patientId: req.user.id,
+        status: "COMPLETED",
+      },
+      orderBy: { slotStartTime: "desc" },
+      include: {
+        doctor: {
+          include: { user: true }
+        },
+        postVisitSummary: true
+      }
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", \`attachment; filename="Medical_Records_\${user.name.replace(/\\s+/g, '_')}.pdf"\`);
+
+    await generateMedicalRecordsPDF(user, appointments, res);
+  } catch (err) {
+    console.error("PDF Export Error:", err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Failed to generate PDF" });
+    }
   }
 });
 
