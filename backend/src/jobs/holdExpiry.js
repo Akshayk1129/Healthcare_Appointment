@@ -8,12 +8,13 @@
  */
 
 const prisma = require("../utils/prisma");
+const { processWaitlistForSlot } = require("../services/waitlist");
 
 const SWEEP_INTERVAL_MS = 30 * 1000; // 30 seconds
 
 async function sweepExpiredHolds() {
   try {
-    const result = await prisma.$executeRawUnsafe(
+    const expiredSlots = await prisma.$queryRawUnsafe(
       `UPDATE appointments
        SET status = 'AVAILABLE',
            patient_id = NULL,
@@ -22,11 +23,31 @@ async function sweepExpiredHolds() {
            version = version + 1,
            updated_at = NOW()
        WHERE status = 'PENDING_HOLD'
-         AND hold_expires_at < NOW()`
+         AND hold_expires_at < NOW()
+       RETURNING id, doctor_id, slot_start_time, patient_id`
     );
 
-    if (result > 0) {
-      console.log(`[HoldExpiry] Cleaned up ${result} expired hold(s)`);
+    if (expiredSlots && expiredSlots.length > 0) {
+      console.log(`[HoldExpiry] Cleaned up ${expiredSlots.length} expired hold(s)`);
+      
+      // If this was a waitlist hold, mark the old waitlist entry as EXPIRED
+      // because we already marked it NOTIFIED when we gave them the hold.
+      // Wait, we need the waitlistEntry ID, or we can just find NOTIFIED entry.
+      for (const slot of expiredSlots) {
+        if (slot.patient_id) {
+           await prisma.waitlistEntry.updateMany({
+             where: {
+               patientId: slot.patient_id,
+               doctorId: slot.doctor_id,
+               status: "NOTIFIED"
+             },
+             data: { status: "EXPIRED" }
+           });
+        }
+        
+        // Trigger waitlist for the next person
+        await processWaitlistForSlot(slot.id, slot.doctor_id, slot.slot_start_time);
+      }
     }
   } catch (err) {
     console.error("[HoldExpiry] Sweep error:", err.message);

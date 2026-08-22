@@ -317,4 +317,59 @@ router.post("/doctors/:id/leave", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/admin/analytics
+ * Retrieve high-level statistics and aggregations for the Admin Dashboard.
+ */
+router.get("/analytics", async (req, res) => {
+  try {
+    const totalDoctors = await prisma.doctorProfile.count();
+    const totalPatients = await prisma.user.count({ where: { role: "PATIENT" } });
+    const totalAppointments = await prisma.appointment.count();
+
+    // Aggregating urgency levels from Symptom Summaries
+    const symptomSummaries = await prisma.symptomSummary.findMany();
+    let triageDistribution = { High: 0, Medium: 0, Low: 0 };
+    
+    symptomSummaries.forEach(ss => {
+      try {
+        const parsed = JSON.parse(ss.summary);
+        if (parsed && parsed.urgency && triageDistribution[parsed.urgency] !== undefined) {
+          triageDistribution[parsed.urgency]++;
+        }
+      } catch (e) {
+        // Fallback data skipped
+      }
+    });
+
+    // 7-day booking trends
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const appointments7Days = await prisma.appointment.findMany({
+      where: {
+        createdAt: { gte: sevenDaysAgo }
+      },
+      select: { createdAt: true }
+    });
+
+    const bookingTrends = Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split("T")[0];
+      const count = appointments7Days.filter(a => a.createdAt.toISOString().startsWith(dateStr)).length;
+      return { date: dateStr, count };
+    }).reverse();
+
+    return res.json({
+      totalDoctors,
+      totalPatients,
+      totalAppointments,
+      triageDistribution,
+      bookingTrends
+    });
+  } catch (err) {
+    console.error("Analytics error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 module.exports = router;

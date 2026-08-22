@@ -95,6 +95,25 @@ function buildEmail(type, recipientEmail, recipientName, payload) {
         `,
       };
 
+    case "WAITLIST_ALERT":
+      subject = `[Waitlist Alert] Slot Available with ${payload.doctorName}`;
+      html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee;">
+          <h2 style="color: #4CAF50; text-align: center;">Waitlist Alert!</h2>
+          <p>Hi ${recipientName},</p>
+          <p>An appointment slot with <strong>${payload.doctorName}</strong> has just opened up on <strong>${new Date(payload.slotStartTime).toLocaleString()}</strong>.</p>
+          <p>You have been automatically given a <strong>1-hour exclusive hold</strong> on this slot.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}/confirm-waitlist?slotId=${payload.appointmentId}&token=${payload.holdOwnerToken}" 
+               style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+              Claim Appointment Now
+            </a>
+          </div>
+          <p style="color: #666; font-size: 14px;">If you don't confirm within 1 hour, the slot will be passed to the next person on the waitlist.</p>
+        </div>
+      `;
+      break;
+
     case "EMAIL_REMINDER":
       return {
         ...base,

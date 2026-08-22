@@ -8,7 +8,8 @@
     "dev": "node --watch src/index.js",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "node prisma/seed.js",
-    "db:generate": "npx prisma generate"
+    "db:generate": "npx prisma generate",
+    "test": "node --test src/tests/concurrency.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

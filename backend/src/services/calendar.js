@@ -184,6 +184,49 @@ async function deleteEvent(userId, eventId) {
 }
 
 /**
+ * Update a Google Calendar event time. Returns true on success.
+ */
+async function updateEvent(userId, eventId, appointmentData) {
+  try {
+    if (!eventId) return false;
+    const auth = await getAuthenticatedClient(userId);
+    if (!auth) return false;
+
+    const calendar = google.calendar({ version: "v3", auth });
+    
+    // Fetch the existing event to keep other properties intact
+    const existingEvent = await calendar.events.get({
+      calendarId: "primary",
+      eventId,
+    });
+
+    const event = {
+      ...existingEvent.data,
+      start: {
+        dateTime: new Date(appointmentData.slotStartTime).toISOString(),
+        timeZone: "Asia/Kolkata",
+      },
+      end: {
+        dateTime: new Date(appointmentData.slotEndTime).toISOString(),
+        timeZone: "Asia/Kolkata",
+      },
+    };
+
+    await calendar.events.update({
+      calendarId: "primary",
+      eventId,
+      resource: event,
+    });
+
+    console.log(`[Calendar] Event ${eventId} updated for user ${userId}`);
+    return true;
+  } catch (err) {
+    console.error(`[Calendar] Failed to update event ${eventId} for user ${userId}:`, err.message);
+    return false;
+  }
+}
+
+/**
  * Check if a user has connected their Google Calendar.
  */
 async function isConnected(userId) {
@@ -199,5 +242,6 @@ module.exports = {
   handleCallback,
   createEvent,
   deleteEvent,
+  updateEvent,
   isConnected,
 };

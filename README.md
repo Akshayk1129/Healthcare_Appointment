@@ -37,7 +37,8 @@ A comprehensive, concurrency-safe healthcare booking system built with React, No
    ```
 4. Initialize the database: `npx prisma migrate dev`
 5. Seed the default admin user: `npm run db:seed`
-6. Start the development server: `npm run dev` (runs on port 5000)
+6. Run the test suite: `npm test` (Runs concurrency tests)
+7. Start the development server: `npm run dev` (runs on port 5000)
 
 ### Frontend Setup
 1. `cd frontend`
@@ -70,6 +71,7 @@ All protected endpoints require a `Bearer <token>` in the `Authorization` header
 - `POST /api/appointments/:slotId/hold` (Patient) - Atomically reserve a slot for 5 minutes.
 - `POST /api/appointments/:id/symptoms` (Patient) - Submit symptoms for AI analysis.
 - `POST /api/appointments/:id/confirm` (Patient) - Confirm a held slot and trigger email.
+- `PUT /api/appointments/:id/reschedule` (Patient/Doctor) - Atomically reschedule a booking to a new target slot.
 - `POST /api/appointments/:id/cancel` (Patient) - Cancel an appointment.
 - `POST /api/appointments/:id/post-visit` (Doctor) - Generate a post-visit AI summary and medication schedule.
 
@@ -88,7 +90,7 @@ The database is built on PostgreSQL using Prisma. Key entities include:
 - **Slot:** Represents a bookable time window. Tracks `status` (`AVAILABLE`, `PENDING_HOLD`, `BOOKED`) and incorporates an optimistic locking `version` column. Contains a compound unique constraint on `[doctorId, slotStartTime]` to prevent overlapping slots.
 - **Appointment:** Represents a confirmed booking, linking a Patient to a Slot. Stores AI symptom analysis, clinical notes, and AI post-visit summaries.
 - **NotificationJob:** A queue table for background email processing. Tracks `status` (`PENDING`, `PROCESSING`, `RETRYING`, `SENT`, `FAILED`), retry attempts, and exponential backoff metadata.
-- **GoogleCalendarToken:** Securely stores encrypted OAuth access and refresh tokens per user.
+- **GoogleCalendarToken:** Stores OAuth access and refresh tokens per user for Calendar integration.
 
 ---
 

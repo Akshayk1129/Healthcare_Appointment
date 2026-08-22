@@ -32,6 +32,7 @@ enum NotificationType {
   EMAIL_CANCELLATION
   MEDICATION_REMINDER
   LEAVE_CONFLICT
+  WAITLIST_ALERT
 }
 
 enum NotificationStatus {
@@ -59,6 +60,7 @@ model User {
   patientAppointments Appointment[]     @relation("PatientAppointments")
   notifications    NotificationJob[] @relation("RecipientNotifications")
   calendarToken    GoogleCalendarToken?
+  waitlistEntries  WaitlistEntry[]
 
   @@map("users")
 }
@@ -79,6 +81,7 @@ model DoctorProfile {
   user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   leaveDays  DoctorLeaveDay[]
   appointments Appointment[]
+  waitlistEntries WaitlistEntry[]
 
   @@map("doctor_profiles")
 }
@@ -211,4 +214,22 @@ model GoogleCalendarToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("google_calendar_tokens")
+}
+
+// ─── Waitlist Entries ───────────────────────────────────────────────────────
+
+model WaitlistEntry {
+  id        String   @id @default(uuid())
+  patientId String   @map("patient_id")
+  doctorId  String   @map("doctor_id")
+  date      DateTime @db.Date
+  status    String   @default("PENDING") // PENDING, NOTIFIED, EXPIRED, FULFILLED
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  patient User          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor  DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@map("waitlist_entries")
 }

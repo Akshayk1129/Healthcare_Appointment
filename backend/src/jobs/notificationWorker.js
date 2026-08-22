@@ -53,6 +53,7 @@ async function processNotificationJobs() {
     console.log(`[NotificationWorker] Processing ${jobs.length} job(s)`);
 
     for (const job of jobs) {
+      console.log(`[NotificationWorker] Claimed job ${job.id} (${job.type})`);
       try {
         const result = await sendEmail(
           job.type,

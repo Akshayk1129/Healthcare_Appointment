@@ -9,6 +9,8 @@ export default function SlotList({ doctorId }) {
   const [symptoms, setSymptoms] = useState('')
   const [symptomResult, setSymptomResult] = useState(null)
   const [submittingSymptoms, setSubmittingSymptoms] = useState(false)
+  const [waitlistDate, setWaitlistDate] = useState('')
+  const [waitlistResult, setWaitlistResult] = useState(null)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -143,6 +145,32 @@ export default function SlotList({ doctorId }) {
     Low: '#34d399',
   }
 
+  const joinWaitlist = async () => {
+    if (!token) {
+      window.location.hash = '#/login'
+      return
+    }
+    if (!waitlistDate) return
+    try {
+      const res = await fetch(`${apiUrl}/api/appointments/waitlist`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ doctorId, date: waitlistDate })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setWaitlistResult({ success: true, message: data.message })
+      } else {
+        setWaitlistResult({ success: false, message: data.error })
+      }
+    } catch {
+      setWaitlistResult({ success: false, message: 'Network error' })
+    }
+  }
+
   return (
     <div className="page">
       <a href="#/doctors" className="link back-link">← Back to Doctors</a>
@@ -249,14 +277,37 @@ export default function SlotList({ doctorId }) {
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => holdSlot(slot.id)}
-                disabled={holdingId === slot.id || holdResult?.success}
+                disabled={holdingId !== null}
               >
-                {holdingId === slot.id ? '...' : 'Book'}
+                {holdingId === slot.id ? 'Holding...' : 'Hold Slot'}
               </button>
             </div>
           ))}
         </div>
       )}
+
+      {/* Waitlist Section */}
+      <div className="card" style={{ marginTop: '40px', backgroundColor: 'var(--surface-color)' }}>
+        <h3>⏳ Can't find a slot for your preferred day?</h3>
+        <p>Join the automated waitlist. If anyone cancels, we'll hold the slot for you for 1 hour and send you an exclusive confirmation link.</p>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '15px' }}>
+          <input 
+            type="date" 
+            value={waitlistDate}
+            onChange={(e) => setWaitlistDate(e.target.value)}
+            style={{ padding: '10px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-primary)' }}
+          />
+          <button className="btn btn-primary" onClick={joinWaitlist} disabled={!waitlistDate}>
+            Join Waitlist
+          </button>
+        </div>
+        {waitlistResult && (
+          <p style={{ marginTop: '10px', color: waitlistResult.success ? 'var(--primary-color)' : 'var(--error-color)' }}>
+            {waitlistResult.message}
+          </p>
+        )}
+      </div>
+
     </div>
   )
 }

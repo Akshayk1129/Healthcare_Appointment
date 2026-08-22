@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 function AdminDashboard() {
   const apiUrl = import.meta.env.VITE_API_URL || '';
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  const [activeTab, setActiveTab] = useState('manage');
+  const [analytics, setAnalytics] = useState(null);
 
   // Form states
   const [newDoctor, setNewDoctor] = useState({
@@ -33,7 +36,20 @@ function AdminDashboard() {
 
   useEffect(() => {
     fetchDoctors();
+    fetchAnalytics();
   }, []);
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/analytics`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) setAnalytics(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchDoctors = async () => {
     try {
@@ -139,6 +155,12 @@ function AdminDashboard() {
         </div>
       )}
 
+      <div className="tab-switcher" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <button className={activeTab === 'manage' ? 'btn-primary' : 'btn-secondary'} onClick={() => setActiveTab('manage')}>Manage Doctors</button>
+        <button className={activeTab === 'analytics' ? 'btn-primary' : 'btn-secondary'} onClick={() => setActiveTab('analytics')}>Platform Analytics</button>
+      </div>
+
+      {activeTab === 'manage' && (
       <div className="admin-grid">
         {/* Create Doctor Form */}
         <div className="card">
@@ -243,6 +265,82 @@ function AdminDashboard() {
           </tbody>
         </table>
       </div>
+      )}
+
+      {activeTab === 'analytics' && analytics && (
+        <div className="analytics-dashboard">
+          <div className="analytics-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+            <div className="card" style={{ textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-secondary)' }}>Total Doctors</h3>
+              <p style={{ fontSize: '32px', fontWeight: 'bold', margin: 0, color: 'var(--primary-color)' }}>{analytics.totalDoctors}</p>
+            </div>
+            <div className="card" style={{ textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-secondary)' }}>Total Patients</h3>
+              <p style={{ fontSize: '32px', fontWeight: 'bold', margin: 0, color: 'var(--primary-color)' }}>{analytics.totalPatients}</p>
+            </div>
+            <div className="card" style={{ textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-secondary)' }}>Total Appointments</h3>
+              <p style={{ fontSize: '32px', fontWeight: 'bold', margin: 0, color: 'var(--primary-color)' }}>{analytics.totalAppointments}</p>
+            </div>
+          </div>
+
+          <div className="admin-grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
+            <div className="card">
+              <h3>7-Day Booking Trend</h3>
+              <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer>
+                  <AreaChart data={analytics.bookingTrends}>
+                    <defs>
+                      <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--primary-color)" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="var(--primary-color)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis dataKey="date" stroke="var(--text-secondary)" />
+                    <YAxis stroke="var(--text-secondary)" />
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--surface-color)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                    <Area type="monotone" dataKey="count" stroke="var(--primary-color)" fillOpacity={1} fill="url(#colorCount)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="card">
+              <h3>AI Triage Distribution</h3>
+              <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'High', value: analytics.triageDistribution.High || 0 },
+                        { name: 'Medium', value: analytics.triageDistribution.Medium || 0 },
+                        { name: 'Low', value: analytics.triageDistribution.Low || 0 },
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      <Cell fill="#ef4444" />
+                      <Cell fill="#f59e0b" />
+                      <Cell fill="#3b82f6" />
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--surface-color)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginTop: '10px' }}>
+                <span style={{ color: '#ef4444', fontWeight: 'bold' }}>High</span>
+                <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>Med</span>
+                <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>Low</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

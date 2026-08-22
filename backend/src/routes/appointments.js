@@ -5,6 +5,7 @@ const { authenticate } = require("../middleware/auth");
 const { authorize } = require("../middleware/roleGuard");
 const { analyzeSymptoms, generatePostVisitSummary } = require("../services/llm");
 const calendarService = require("../services/calendar");
+const { processWaitlistForSlot } = require("../services/waitlist");
 const { llmRateLimiter } = require("../middleware/rateLimiter");
 
 const router = express.Router();
@@ -331,9 +332,18 @@ router.post("/:id/cancel", authenticate, async (req, res) => {
       calendarService.deleteEvent(appointment.doctor.user.id, appointment.googleCalendarEventId);
     }
 
+    // ─── Trigger Waitlist ────────────────────────────────────────────
+    const waitlistTriggered = await processWaitlistForSlot(
+      id,
+      appointment.doctorId,
+      appointment.slotStartTime
+    );
+
     return res.json({
-      message: "Appointment cancelled and slot freed",
-      appointment: { id, status: "AVAILABLE" },
+      message: waitlistTriggered
+        ? "Appointment cancelled. Waitlist notified for this slot."
+        : "Appointment cancelled and slot freed",
+      appointment: { id, status: waitlistTriggered ? "PENDING_HOLD" : "AVAILABLE" },
     });
   } catch (err) {
     console.error("Cancel appointment error:", err);
@@ -588,6 +598,188 @@ router.get("/doctor", authenticate, authorize("DOCTOR"), async (req, res) => {
     return res.json({ appointments: result });
   } catch (err) {
     console.error("Doctor appointments error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * PUT /api/appointments/:id/reschedule
+ *
+ * Patient or Doctor reschedules a BOOKED appointment to a new AVAILABLE slot.
+ */
+router.put("/:id/reschedule", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newSlotId } = req.body;
+
+    if (!newSlotId) {
+      return res.status(400).json({ error: "newSlotId is required" });
+    }
+
+    // Must be part of a transaction to ensure no orphaned state
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Fetch old slot to verify ownership and status
+      const oldSlot = await tx.appointment.findUnique({
+        where: { id },
+        include: { doctor: { include: { user: true } }, patient: true },
+      });
+
+      if (!oldSlot) throw new Error("404_OLD_NOT_FOUND");
+      if (oldSlot.status !== "BOOKED") throw new Error("400_NOT_BOOKED");
+
+      // Verify ownership (must be the patient or the doctor)
+      const isPatient = req.user.role === "PATIENT" && oldSlot.patientId === req.user.id;
+      const isDoctor = req.user.role === "DOCTOR" && oldSlot.doctor.userId === req.user.id;
+      if (!isPatient && !isDoctor) throw new Error("403_FORBIDDEN");
+
+      // 2. Atomically lock the new slot using raw query
+      const updatedNewSlots = await tx.$queryRawUnsafe(
+        `UPDATE appointments
+         SET status = 'BOOKED',
+             patient_id = $1,
+             notes = $2,
+             google_calendar_event_id = $3,
+             patient_calendar_event_id = $4,
+             version = version + 1,
+             updated_at = NOW()
+         WHERE id = $5 AND status = 'AVAILABLE'
+         RETURNING *`,
+        oldSlot.patientId,
+        oldSlot.notes,
+        oldSlot.googleCalendarEventId,
+        oldSlot.patientCalendarEventId,
+        newSlotId
+      );
+
+      if (!updatedNewSlots || updatedNewSlots.length === 0) {
+        throw new Error("409_CONFLICT");
+      }
+      
+      const newSlot = updatedNewSlots[0];
+
+      // 3. Move summaries to the new slot
+      await tx.symptomSummary.updateMany({
+        where: { appointmentId: id },
+        data: { appointmentId: newSlotId },
+      });
+      await tx.postVisitSummary.updateMany({
+        where: { appointmentId: id },
+        data: { appointmentId: newSlotId },
+      });
+
+      // 4. Release old slot cleanly
+      await tx.appointment.update({
+        where: { id },
+        data: {
+          status: "AVAILABLE",
+          patientId: null,
+          notes: null,
+          googleCalendarEventId: null,
+          patientCalendarEventId: null,
+          holdExpiresAt: null,
+          holdOwnerToken: null,
+          version: { increment: 1 },
+        },
+      });
+
+      return { oldSlot, newSlot };
+    });
+
+    // 5. Update Calendar Events
+    const { oldSlot, newSlot } = result;
+
+    if (newSlot.google_calendar_event_id) {
+      await calendarService.updateEvent(oldSlot.doctor.userId, newSlot.google_calendar_event_id, {
+        slotStartTime: newSlot.slot_start_time,
+        slotEndTime: newSlot.slot_end_time,
+      });
+    }
+
+    if (newSlot.patient_calendar_event_id && oldSlot.patientId) {
+      await calendarService.updateEvent(oldSlot.patientId, newSlot.patient_calendar_event_id, {
+        slotStartTime: newSlot.slot_start_time,
+        slotEndTime: newSlot.slot_end_time,
+      });
+    }
+
+    // 6. Notify Patient and Doctor
+    const payload = {
+      doctorName: oldSlot.doctor.user.name,
+      patientName: oldSlot.patient.name,
+      oldStartTime: oldSlot.slotStartTime.toISOString(),
+      newStartTime: newSlot.slot_start_time.toISOString(),
+      reason: req.user.role === "PATIENT" ? "Rescheduled by patient" : "Rescheduled by doctor",
+    };
+
+    if (oldSlot.patientId) {
+      await prisma.notificationJob.create({
+        data: {
+          type: "EMAIL_CANCELLATION", // Reuse email format for reschedule info if needed, or add EMAIL_RESCHEDULE
+          recipientId: oldSlot.patientId,
+          payload,
+        },
+      });
+    }
+    await prisma.notificationJob.create({
+      data: {
+        type: "EMAIL_CANCELLATION", 
+        recipientId: oldSlot.doctor.userId,
+        payload,
+      },
+    });
+
+    return res.json({ message: "Rescheduled successfully" });
+
+  } catch (err) {
+    if (err.message === "404_OLD_NOT_FOUND") return res.status(404).json({ error: "Appointment not found" });
+    if (err.message === "400_NOT_BOOKED") return res.status(400).json({ error: "Only booked appointments can be rescheduled" });
+    if (err.message === "403_FORBIDDEN") return res.status(403).json({ error: "Forbidden" });
+    if (err.message === "409_CONFLICT") return res.status(409).json({ error: "New slot is no longer available" });
+
+    console.error("Reschedule error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/appointments/waitlist
+ *
+ * Join the waitlist for a specific doctor on a specific date.
+ */
+router.post("/waitlist", authenticate, authorize("PATIENT"), async (req, res) => {
+  try {
+    const { doctorId, date } = req.body;
+    if (!doctorId || !date) {
+      return res.status(400).json({ error: "doctorId and date are required" });
+    }
+
+    const waitlistDate = new Date(date);
+    waitlistDate.setUTCHours(0, 0, 0, 0);
+
+    const existing = await prisma.waitlistEntry.findFirst({
+      where: {
+        patientId: req.user.id,
+        doctorId,
+        date: waitlistDate,
+        status: { in: ["PENDING", "NOTIFIED"] },
+      },
+    });
+
+    if (existing) {
+      return res.status(409).json({ error: "You are already on the waitlist for this date." });
+    }
+
+    await prisma.waitlistEntry.create({
+      data: {
+        patientId: req.user.id,
+        doctorId,
+        date: waitlistDate,
+      },
+    });
+
+    return res.json({ message: "Successfully joined waitlist." });
+  } catch (err) {
+    console.error("Join waitlist error:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -39,3 +39,11 @@ To prevent overlapping worker instances from sending duplicate emails, we use an
 This allows multiple workers to run safely in parallel.
 
 If an SMTP failure occurs, the worker increments the `attempts` counter and sets the status to `RETRYING`. We implemented **exponential backoff** directly in the SQL query (`NOW() >= updated_at + POWER(2, attempts) * INTERVAL '1 minute'`). This forces the system to wait 2, 4, and 8 minutes between retries. If the job fails a 3rd time, it is permanently marked as `FAILED`. This architecture ensures transient network issues never disrupt patient communication while protecting the system from infinite retry loops.
+
+## 5. Atomic Rescheduling
+When a patient or doctor reschedules an appointment, the system executes a single, atomic Prisma transaction:
+1. It executes a locking `UPDATE ... RETURNING` query to hold the new slot. If the slot was taken a millisecond prior, the query returns empty, instantly aborting the transaction with a `409 Conflict` to protect the original booking.
+2. It migrates the patient data, AI symptom summaries, and Calendar Event IDs to the new slot.
+3. It cleanly resets the original slot back to `AVAILABLE`.
+
+By updating the existing Google Calendar Event via the API instead of deleting and recreating it, the event simply moves on the user's calendar, maintaining RSVP states and avoiding duplicated invites.
