@@ -810,7 +810,7 @@ router.get("/export/pdf", authenticate, authorize("PATIENT"), async (req, res) =
     });
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", \`attachment; filename="Medical_Records_\${user.name.replace(/\\s+/g, '_')}.pdf"\`);
+    res.setHeader("Content-Disposition", 'attachment; filename="Medical_Records_' + user.name.replace(/\\s+/g, '_') + '.pdf"');
 
     await generateMedicalRecordsPDF(user, appointments, res);
   } catch (err) {
