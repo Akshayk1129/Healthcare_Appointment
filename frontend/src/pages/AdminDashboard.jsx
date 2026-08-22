@@ -161,8 +161,9 @@ function AdminDashboard() {
       </div>
 
       {activeTab === 'manage' && (
-      <div className="admin-grid">
-        {/* Create Doctor Form */}
+      <>
+        <div className="admin-grid">
+          {/* Create Doctor Form */}
         <div className="card">
           <h3>Create New Doctor</h3>
           <form onSubmit={handleCreateDoctor} className="form-group" autoComplete="off">
@@ -265,6 +266,7 @@ function AdminDashboard() {
           </tbody>
         </table>
       </div>
+      </>
       )}
 
       {activeTab === 'analytics' && analytics && (
